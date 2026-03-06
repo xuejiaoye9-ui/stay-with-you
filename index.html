@@ -1,0 +1,225 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>和 Momiji 一起...</title>
+    <script src="https://cdn.jsdelivr.net/npm/canvas-confetti@1.6.0/dist/confetti.browser.min.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&display=swap" rel="stylesheet">
+    
+    <style>
+        :root {
+            --beige: #FDF5E6; 
+            --warm-pink: #FFD1DC;
+            --text-black: #4A4A4A;
+            --handwriting: "Ma Shan Zheng", "Kaiti", "STKaiti", cursive;
+        }
+
+        body {
+            background-color: var(--beige);
+            background-image: url("https://www.transparenttextures.com/patterns/handmade-paper.png");
+            margin: 0;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            font-family: var(--handwriting);
+            color: var(--text-black);
+            overflow: hidden;
+            cursor: pointer; /* 提醒用户可以点击 */
+        }
+
+        /* 音乐控制 */
+        #music-control {
+            position: fixed;
+            top: 25px; right: 25px;
+            display: flex; align-items: center; gap: 8px;
+            padding: 8px 20px; 
+            background: rgba(255, 255, 255, 0.4);
+            backdrop-filter: blur(5px);
+            border: 1.5px solid var(--text-black);
+            border-radius: 5px;
+            cursor: pointer; 
+            z-index: 1000;
+        }
+        .playing #music-icon { animation: heartBeat 1.5s infinite; color: #D46A7E; }
+
+        @keyframes heartBeat {
+            0%, 100% { transform: scale(1); }
+            50% { transform: scale(1.2); }
+        }
+
+        /* 转盘 */
+        .wheel-box {
+            position: relative;
+            width: 450px; height: 450px;
+            border: 12px solid white;
+            border-radius: 50%;
+            box-shadow: 0 10px 30px rgba(0,0,0,0.08);
+            background: white;
+        }
+
+        #wheel-svg { width: 100%; height: 100%; transform: rotate(-90deg); transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); }
+
+        /* 猫爪指针 */
+        .pointer {
+            position: absolute;
+            top: -45px; left: 50%;
+            transform: translateX(-50%);
+            z-index: 100;
+            filter: drop-shadow(2px 4px 6px rgba(0,0,0,0.1));
+            pointer-events: none;
+        }
+
+        .paw-wiggle { animation: wiggle 0.5s infinite ease-in-out; }
+        @keyframes wiggle {
+            0%, 100% { transform: translateX(-50%) rotate(0deg); }
+            25% { transform: translateX(-50%) rotate(-8deg); }
+            75% { transform: translateX(-50%) rotate(8deg); }
+        }
+
+        .spin-btn {
+            margin-top: 40px;
+            padding: 12px 45px;
+            font-size: 1.3rem;
+            font-family: var(--handwriting);
+            background: var(--text-black);
+            color: white;
+            border: none;
+            border-radius: 50px;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .spin-btn:active { transform: scale(0.95); }
+
+        #result-overlay {
+            position: fixed; top: 0; left: 0; width: 100%; height: 100%;
+            background: rgba(253, 245, 230, 0.95);
+            display: none; flex-direction: column; align-items: center; justify-content: center;
+            z-index: 2000;
+        }
+        #result-text { font-size: 2.8rem; color: #D46A7E; border-bottom: 2px dashed #D46A7E; padding-bottom: 15px; text-align: center; }
+    </style>
+</head>
+<body>
+
+    <div id="music-control" onclick="toggleMusic(event)">
+        <span id="music-icon">♥</span>
+        <span id="music-text">Stay With You</span>
+    </div>
+
+    <audio id="bgm" loop preload="auto">
+        <source src="stay-with-you.mp3" type="audio/mpeg">
+    </audio>
+
+    <h1>今天和 Momiji 做什么？</h1>
+
+    <div class="wheel-box">
+        <div class="pointer" id="cat-paw">
+            <svg viewBox="0 0 100 120" width="70" height="84">
+                <path d="M20,50 Q20,20 50,20 Q80,20 80,50 Q80,80 50,110 Q20,80 20,50" fill="white" stroke="#4A4A4A" stroke-width="1" />
+                <ellipse cx="50" cy="55" rx="18" ry="14" fill="#FFD1DC" />
+                <circle cx="30" cy="35" r="7" fill="#FFD1DC" />
+                <circle cx="43" cy="28" r="8" fill="#FFD1DC" />
+                <circle cx="57" cy="28" r="8" fill="#FFD1DC" />
+                <circle cx="70" cy="35" r="7" fill="#FFD1DC" />
+            </svg>
+        </div>
+        <svg id="wheel-svg" viewBox="0 0 100 100"></svg>
+    </div>
+
+    <button class="spin-btn" id="spin-button" onclick="startSpin()">开始抽取</button>
+
+    <div id="result-overlay" onclick="closeResult()">
+        <div id="result-text"></div>
+        <p>点击任意位置继续</p>
+    </div>
+
+    <script>
+        const options = ["一起学习", "一起码字", "一起打麻将", "一起玩饥荒", "一起玩星露谷", "一起睡觉", "一起出来玩"];
+        const colors = ['#FFD1DC', '#FFFACD', '#E0F2F1', '#FCE4EC', '#FFF9C4', '#F3E5F5', '#E1F5FE'];
+        const svg = document.getElementById('wheel-svg');
+        const bgm = document.getElementById('bgm');
+        const musicCtrl = document.getElementById('music-control');
+
+        // 生成转盘
+        options.forEach((text, i) => {
+            const angle = 360 / options.length;
+            const start = i * angle;
+            const end = (i + 1) * angle;
+            const x1 = 50 + 50 * Math.cos(Math.PI * start / 180);
+            const y1 = 50 + 50 * Math.sin(Math.PI * start / 180);
+            const x2 = 50 + 50 * Math.cos(Math.PI * end / 180);
+            const y2 = 50 + 50 * Math.sin(Math.PI * end / 180);
+            const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2} Z`;
+            
+            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+            path.setAttribute("d", pathData);
+            path.setAttribute("fill", colors[i % colors.length]);
+            path.setAttribute("stroke", "white");
+            svg.appendChild(path);
+
+            const txtAngle = start + angle / 2;
+            const tx = 50 + 32 * Math.cos(Math.PI * txtAngle / 180);
+            const ty = 50 + 32 * Math.sin(Math.PI * txtAngle / 180);
+            const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+            txt.setAttribute("x", tx); txt.setAttribute("y", ty);
+            txt.setAttribute("font-size", "4.5");
+            txt.setAttribute("text-anchor", "middle");
+            txt.setAttribute("transform", `rotate(${txtAngle + 90}, ${tx}, ${ty})`);
+            txt.textContent = text;
+            svg.appendChild(txt);
+        });
+
+        let rotation = 0;
+        let spinning = false;
+
+        function startSpin() {
+            if (spinning) return;
+            spinning = true;
+            document.getElementById('spin-button').disabled = true;
+            document.getElementById('cat-paw').classList.add('paw-wiggle');
+            
+            // 确保音乐播放（如果还没响）
+            playAudio();
+
+            const winIdx = Math.floor(Math.random() * options.length);
+            const deg = (360 * 5) + (360 - (winIdx * (360/options.length))) - (180/options.length);
+            rotation += deg;
+            svg.style.transform = `rotate(${rotation - 90}deg)`;
+
+            setTimeout(() => {
+                document.getElementById('cat-paw').classList.remove('paw-wiggle');
+                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                document.getElementById('result-text').innerText = `恭喜，快去和 momiji ${options[winIdx]} 吧！`;
+                document.getElementById('result-overlay').style.display = 'flex';
+            }, 5000);
+        }
+
+        function playAudio() {
+            bgm.play().then(() => {
+                musicCtrl.classList.add('playing');
+                document.getElementById('music-text').innerText = "Stay With You";
+            }).catch(e => console.log("等待点击激活音频"));
+        }
+
+        function toggleMusic(e) {
+            e.stopPropagation();
+            if (bgm.paused) { playAudio(); } 
+            else { bgm.pause(); musicCtrl.classList.remove('playing'); }
+        }
+
+        function closeResult() {
+            document.getElementById('result-overlay').style.display = 'none';
+            document.getElementById('spin-button').disabled = false;
+            spinning = false;
+        }
+
+        // 核心：点击页面任何地方激活音频
+        document.addEventListener('click', () => {
+            if (bgm.paused) playAudio();
+        }, { once: false });
+    </script>
+</body>
+</html>
