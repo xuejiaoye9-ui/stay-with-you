@@ -49,7 +49,7 @@
             50% { transform: scale(1.2); }
         }
 
-        /* 转盘 */
+        /* 转盘容器 */
         .wheel-box {
             position: relative;
             width: 450px; height: 450px;
@@ -147,74 +147,67 @@
         const bgm = document.getElementById('bgm');
         const musicCtrl = document.getElementById('music-control');
 
-        // 初始化生成转盘
-        options.forEach((text, i) => {
-            const angle = 360 / options.length;
-            const start = i * angle;
-            const end = (i + 1) * angle;
-            
-            // 为了让文字正着看，我们把起始弧度顺时针偏移 -90度
-            const rotateOffset = -90;
-            const x1 = 50 + 50 * Math.cos(Math.PI * (start + rotateOffset) / 180);
-            const y1 = 50 + 50 * Math.sin(Math.PI * (start + rotateOffset) / 180);
-            const x2 = 50 + 50 * Math.cos(Math.PI * (end + rotateOffset) / 180);
-            const y2 = 50 + 50 * Math.sin(Math.PI * (end + rotateOffset) / 180);
-            
-            const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2} Z`;
-            const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
-            path.setAttribute("d", pathData);
-            path.setAttribute("fill", colors[i % colors.length]);
-            path.setAttribute("stroke", "white");
-            path.setAttribute("stroke-width", "0.5");
-            svg.appendChild(path);
+        // 初始化转盘：将索引0的中心点精准对齐正上方
+        function initWheel() {
+            svg.innerHTML = '';
+            const angleStep = 360 / options.length;
+            options.forEach((text, i) => {
+                const startAngle = i * angleStep - 90; 
+                const endAngle = (i + 1) * angleStep - 90;
+                
+                const x1 = 50 + 50 * Math.cos(Math.PI * startAngle / 180);
+                const y1 = 50 + 50 * Math.sin(Math.PI * startAngle / 180);
+                const x2 = 50 + 50 * Math.cos(Math.PI * endAngle / 180);
+                const y2 = 50 + 50 * Math.sin(Math.PI * endAngle / 180);
+                
+                const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2} Z`;
+                const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
+                path.setAttribute("d", pathData);
+                path.setAttribute("fill", colors[i % colors.length]);
+                path.setAttribute("stroke", "white");
+                path.setAttribute("stroke-width", "0.5");
+                svg.appendChild(path);
 
-            const txtAngle = start + angle / 2 + rotateOffset;
-            const tx = 50 + 32 * Math.cos(Math.PI * txtAngle / 180);
-            const ty = 50 + 32 * Math.sin(Math.PI * txtAngle / 180);
-            const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
-            txt.setAttribute("x", tx); txt.setAttribute("y", ty);
-            txt.setAttribute("fill", "#4A4A4A");
-            txt.setAttribute("font-size", "4.2");
-            txt.setAttribute("text-anchor", "middle");
-            txt.setAttribute("font-family", "var(--handwriting)");
-            // 文字旋转使其径向排列
-            txt.setAttribute("transform", `rotate(${txtAngle + 90}, ${tx}, ${ty})`);
-            txt.textContent = text;
-            svg.appendChild(txt);
-        });
+                const txtAngle = startAngle + angleStep / 2;
+                const tx = 50 + 32 * Math.cos(Math.PI * txtAngle / 180);
+                const ty = 50 + 32 * Math.sin(Math.PI * txtAngle / 180);
+                const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
+                txt.setAttribute("x", tx); txt.setAttribute("y", ty);
+                txt.setAttribute("fill", "#4A4A4A");
+                txt.setAttribute("font-size", "4.2");
+                txt.setAttribute("text-anchor", "middle");
+                txt.setAttribute("transform", `rotate(${txtAngle + 90}, ${tx}, ${ty})`);
+                txt.textContent = text;
+                svg.appendChild(txt);
+            });
+        }
 
-        let currentRotation = 0;
-        let spinning = false;
+        initWheel();
+
+        let totalDeg = 0;
+        let isSpinning = false;
 
         function startSpin() {
-            if (spinning) return;
-            spinning = true;
+            if (isSpinning) return;
+            isSpinning = true;
             
             document.getElementById('spin-button').disabled = true;
             document.getElementById('cat-paw').classList.add('paw-wiggle');
-            
-            // 随机选取结果索引
-            const winIdx = Math.floor(Math.random() * options.length);
-            
-            // 计算逻辑：
-            // 每个扇区的中心角度是 (winIdx * 360/length) + (180/length)
-            // 因为转盘整体不需要初始偏移，所以直接计算目标角度即可
-            const segmentAngle = 360 / options.length;
-            const targetCenterAngle = (winIdx * segmentAngle) + (segmentAngle / 2);
-            
-            // 计算为了让 targetCenterAngle 停在指针位置（正上方 0度）需要旋转的角度
-            // 旋转总角度 = 基础圈数 (5圈) + (360 - 目标中心点角度)
-            const rotationToApply = 1800 + (360 - targetCenterAngle);
-            currentRotation += rotationToApply;
+            if (bgm.paused) playAudio();
 
-            svg.style.transform = `rotate(${currentRotation}deg)`;
+            const winIdx = Math.floor(Math.random() * options.length);
+            const angleStep = 360 / options.length;
+            
+            // 算法：顺时针旋转，目标位置 = (圈数 * 360) - (目标索引角度偏移)
+            const currentFullSpins = Math.floor(totalDeg / 360) + 5;
+            totalDeg = (currentFullSpins * 360) - (winIdx * angleStep) - (angleStep / 2);
+
+            svg.style.transform = `rotate(${totalDeg}deg)`;
 
             setTimeout(() => {
                 document.getElementById('cat-paw').classList.remove('paw-wiggle');
                 confetti({ 
-                    particleCount: 150, 
-                    spread: 70, 
-                    origin: { y: 0.6 },
+                    particleCount: 150, spread: 70, origin: { y: 0.6 },
                     colors: ['#FFD1DC', '#FFFACD', '#4A4A4A']
                 });
                 document.getElementById('result-text').innerText = `恭喜，快去和 momiji ${options[winIdx]} 吧！`;
@@ -223,27 +216,19 @@
         }
 
         function playAudio() {
-            bgm.play().then(() => {
-                musicCtrl.classList.add('playing');
-                document.getElementById('music-text').innerText = "Stay With You";
-            }).catch(e => console.log("Audio play deferred"));
+            bgm.play().then(() => musicCtrl.classList.add('playing')).catch(e => {});
         }
-
         function toggleMusic(e) {
             e.stopPropagation();
-            if (bgm.paused) { playAudio(); } 
+            if (bgm.paused) playAudio();
             else { bgm.pause(); musicCtrl.classList.remove('playing'); }
         }
-
         function closeResult() {
             document.getElementById('result-overlay').style.display = 'none';
             document.getElementById('spin-button').disabled = false;
-            spinning = false;
+            isSpinning = false;
         }
-
-        document.addEventListener('click', () => {
-            if (bgm.paused) playAudio();
-        }, { once: true });
+        document.addEventListener('click', () => { if (bgm.paused) playAudio(); }, { once: true });
     </script>
 </body>
 </html>
