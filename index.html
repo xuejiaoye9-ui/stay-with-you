@@ -27,7 +27,6 @@
             font-family: var(--handwriting);
             color: var(--text-black);
             overflow: hidden;
-            cursor: pointer; /* 提醒用户可以点击 */
         }
 
         /* 音乐控制 */
@@ -60,7 +59,11 @@
             background: white;
         }
 
-        #wheel-svg { width: 100%; height: 100%; transform: rotate(-90deg); transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); }
+        #wheel-svg { 
+            width: 100%; 
+            height: 100%; 
+            transition: transform 5s cubic-bezier(0.15, 0, 0.15, 1); 
+        }
 
         /* 猫爪指针 */
         .pointer {
@@ -92,6 +95,7 @@
             transition: all 0.2s;
         }
         .spin-btn:active { transform: scale(0.95); }
+        .spin-btn:disabled { background: #999; cursor: not-allowed; }
 
         #result-overlay {
             position: fixed; top: 0; left: 0; width: 100%; height: 100%;
@@ -99,7 +103,7 @@
             display: none; flex-direction: column; align-items: center; justify-content: center;
             z-index: 2000;
         }
-        #result-text { font-size: 2.8rem; color: #D46A7E; border-bottom: 2px dashed #D46A7E; padding-bottom: 15px; text-align: center; }
+        #result-text { font-size: 2.8rem; color: #D46A7E; border-bottom: 2px dashed #D46A7E; padding-bottom: 15px; text-align: center; max-width: 80%; }
     </style>
 </head>
 <body>
@@ -143,55 +147,76 @@
         const bgm = document.getElementById('bgm');
         const musicCtrl = document.getElementById('music-control');
 
-        // 生成转盘
+        // 初始化生成转盘
         options.forEach((text, i) => {
             const angle = 360 / options.length;
             const start = i * angle;
             const end = (i + 1) * angle;
-            const x1 = 50 + 50 * Math.cos(Math.PI * start / 180);
-            const y1 = 50 + 50 * Math.sin(Math.PI * start / 180);
-            const x2 = 50 + 50 * Math.cos(Math.PI * end / 180);
-            const y2 = 50 + 50 * Math.sin(Math.PI * end / 180);
-            const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2} Z`;
             
+            // 为了让文字正着看，我们把起始弧度顺时针偏移 -90度
+            const rotateOffset = -90;
+            const x1 = 50 + 50 * Math.cos(Math.PI * (start + rotateOffset) / 180);
+            const y1 = 50 + 50 * Math.sin(Math.PI * (start + rotateOffset) / 180);
+            const x2 = 50 + 50 * Math.cos(Math.PI * (end + rotateOffset) / 180);
+            const y2 = 50 + 50 * Math.sin(Math.PI * (end + rotateOffset) / 180);
+            
+            const pathData = `M 50 50 L ${x1} ${y1} A 50 50 0 0 1 ${x2} ${y2} Z`;
             const path = document.createElementNS("http://www.w3.org/2000/svg", "path");
             path.setAttribute("d", pathData);
             path.setAttribute("fill", colors[i % colors.length]);
             path.setAttribute("stroke", "white");
+            path.setAttribute("stroke-width", "0.5");
             svg.appendChild(path);
 
-            const txtAngle = start + angle / 2;
+            const txtAngle = start + angle / 2 + rotateOffset;
             const tx = 50 + 32 * Math.cos(Math.PI * txtAngle / 180);
             const ty = 50 + 32 * Math.sin(Math.PI * txtAngle / 180);
             const txt = document.createElementNS("http://www.w3.org/2000/svg", "text");
             txt.setAttribute("x", tx); txt.setAttribute("y", ty);
-            txt.setAttribute("font-size", "4.5");
+            txt.setAttribute("fill", "#4A4A4A");
+            txt.setAttribute("font-size", "4.2");
             txt.setAttribute("text-anchor", "middle");
+            txt.setAttribute("font-family", "var(--handwriting)");
+            // 文字旋转使其径向排列
             txt.setAttribute("transform", `rotate(${txtAngle + 90}, ${tx}, ${ty})`);
             txt.textContent = text;
             svg.appendChild(txt);
         });
 
-        let rotation = 0;
+        let currentRotation = 0;
         let spinning = false;
 
         function startSpin() {
             if (spinning) return;
             spinning = true;
+            
             document.getElementById('spin-button').disabled = true;
             document.getElementById('cat-paw').classList.add('paw-wiggle');
             
-            // 确保音乐播放（如果还没响）
-            playAudio();
-
+            // 随机选取结果索引
             const winIdx = Math.floor(Math.random() * options.length);
-            const deg = (360 * 5) + (360 - (winIdx * (360/options.length))) - (180/options.length);
-            rotation += deg;
-            svg.style.transform = `rotate(${rotation - 90}deg)`;
+            
+            // 计算逻辑：
+            // 每个扇区的中心角度是 (winIdx * 360/length) + (180/length)
+            // 因为转盘整体不需要初始偏移，所以直接计算目标角度即可
+            const segmentAngle = 360 / options.length;
+            const targetCenterAngle = (winIdx * segmentAngle) + (segmentAngle / 2);
+            
+            // 计算为了让 targetCenterAngle 停在指针位置（正上方 0度）需要旋转的角度
+            // 旋转总角度 = 基础圈数 (5圈) + (360 - 目标中心点角度)
+            const rotationToApply = 1800 + (360 - targetCenterAngle);
+            currentRotation += rotationToApply;
+
+            svg.style.transform = `rotate(${currentRotation}deg)`;
 
             setTimeout(() => {
                 document.getElementById('cat-paw').classList.remove('paw-wiggle');
-                confetti({ particleCount: 150, spread: 70, origin: { y: 0.6 } });
+                confetti({ 
+                    particleCount: 150, 
+                    spread: 70, 
+                    origin: { y: 0.6 },
+                    colors: ['#FFD1DC', '#FFFACD', '#4A4A4A']
+                });
                 document.getElementById('result-text').innerText = `恭喜，快去和 momiji ${options[winIdx]} 吧！`;
                 document.getElementById('result-overlay').style.display = 'flex';
             }, 5000);
@@ -201,7 +226,7 @@
             bgm.play().then(() => {
                 musicCtrl.classList.add('playing');
                 document.getElementById('music-text').innerText = "Stay With You";
-            }).catch(e => console.log("等待点击激活音频"));
+            }).catch(e => console.log("Audio play deferred"));
         }
 
         function toggleMusic(e) {
@@ -216,10 +241,9 @@
             spinning = false;
         }
 
-        // 核心：点击页面任何地方激活音频
         document.addEventListener('click', () => {
             if (bgm.paused) playAudio();
-        }, { once: false });
+        }, { once: true });
     </script>
 </body>
 </html>
